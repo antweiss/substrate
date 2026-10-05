@@ -1,0 +1,55 @@
+# Copyright 2026 Ant Weiss
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ActorTemplate (protojson-shaped ateapipb.ActorTemplate) for the llama-actor
+# demo. Create via `kubectl ate create actor-template -f ...` after you've
+# built and pushed the Dockerfile; substrate rejects mutable tags, so the
+# image reference must be a digest.
+#
+# Substitute ${LLAMA_ACTOR_IMAGE} before applying, e.g.:
+#   export LLAMA_ACTOR_IMAGE=<registry>/llama-actor@sha256:...
+#   envsubst < demos/llama-actor/llama-actor-template.yaml.tmpl \
+#     | kubectl ate create actor-template -f -
+metadata:
+  atespace: ate-demo-llama-actor
+  name: llama-actor
+workerSelector:
+  matchLabels:
+    workload: llama-actor
+containers:
+- name: llama
+  image: ${LLAMA_ACTOR_IMAGE}
+  # Wakeup probe only passes once the Python server comes up on :80, which
+  # happens after llama-server has loaded the model into RAM. That timing
+  # is what makes the golden snapshot capture a model-loaded actor.
+  wakeupProbe:
+    httpGet:
+      path: /readyz
+      port: 80
+resources:
+  limits:
+  - name: cpu
+    quantity: "2"
+  - name: memory
+    quantity: 2500Mi
+snapshotConfig:
+  # FULL captures process memory as well as durable volumes. This is what
+  # makes resume return with Qwen weights already in RAM (5 ms model-load
+  # time per Ollama's own metric) and with the conversation state intact.
+  onPause: SNAPSHOT_CONTENT_SCOPE_FULL
+  onCommit: SNAPSHOT_CONTENT_SCOPE_FULL
+  storageLocation: gs://${BUCKET_NAME}/ate-demo-llama-actor/
+sandboxConfig:
+  sandboxClass: SANDBOX_CLASS_GVISOR
+  configName: gvisor-default
